@@ -8,7 +8,7 @@ Monorepo com dois sub-projetos independentes e arquivos compartilhados na raiz.
 
 ```
 .
-├── back-end/        # API NestJS 11 + Prisma + PostgreSQL
+├── back-end/        # API NestJS 11 + Prisma + SQLite
 ├── front-end/       # App Next.js 15 (App Router) + TypeScript + Tailwind
 ├── docs/            # Esta documentação
 ├── .github/         # Template de Pull Request

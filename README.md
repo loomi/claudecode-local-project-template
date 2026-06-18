@@ -1,140 +1,235 @@
-# Immersion Project Template
+# Claude Code Local Project Template
 
-Template de **projeto fullstack totalmente configurado para desenvolvimento assistido por agentes de IA**, em especial o [Claude Code](https://claude.com/claude-code). O monorepo já vem com a estrutura, convenções, documentação interna e *skills* customizadas necessárias para que o agente entenda o projeto e produza código alinhado ao padrão da casa desde o primeiro prompt.
+Fullstack monorepo template **100% local** — sem Postgres, sem Docker, sem
+serviços hospedados. Roda em laptops modestos. Pensado para *vibe-coding*
+com [Claude Code](https://claude.com/claude-code): um único `make setup`
+deixa back-end e front-end prontos.
 
-## O que o template inclui
+- **Back-end:** NestJS 11 + Prisma + **SQLite** + Swagger + JWT
+- **Front-end:** Next.js 15 (App Router) + TypeScript strict + Tailwind v4 + TanStack Query
+- **Orquestração:** Makefile cross-platform (macOS / Linux / Windows) +
+  scripts em `bash` e PowerShell que **detectam o SO e instalam o Node se faltar**
+- **Vibe-coding safety net:** Stop hook do Claude Code roda `make verify`
+  ao fim de cada turno — quem retoma o projeto sempre encontra build verde
 
-- **`back-end/`** — API em NestJS 11 + Prisma + PostgreSQL, com Swagger, autenticação JWT, filtro global de exceções, interceptor de resposta padronizado e configuração tipada via `ConfigService`.
-- **`front-end/`** — App em Next.js 15 (App Router) + TypeScript strict + Tailwind v4 + TanStack Query, organizado por *features*.
-- **`.claude/skills/` na raiz** — *skills* especializadas centralizadas, abrangendo back-end e front-end. Assim, basta abrir **uma única sessão do Claude Code na raiz do monorepo** para trabalhar nos dois projetos sem precisar abrir sessões separadas.
-- **`CLAUDE.md` em cada subprojeto** — guia autoritativo de arquitetura, convenções e *workflows* lido pelo agente antes de qualquer alteração.
+---
 
-### Skills disponíveis
+## TL;DR
 
-Todas vivem em `.claude/skills/` e usam prefixo `back-` ou `front-` para deixar claro a qual subprojeto pertencem:
+```bash
+git clone https://github.com/loomi/claudecode-local-project-template.git meu-projeto
+cd meu-projeto
+make setup        # instala Node se faltar, deps, .env, migra SQLite
+make dev          # back :3001  +  front :3000
+```
 
-| Back-end                  | Front-end                  |
-| ------------------------- | -------------------------- |
-| `/back-add-feature`       | `/front-test`              |
-| `/back-add-tests`         | `/front-optimize`          |
-| `/back-add-logs`          | `/front-security`          |
-| `/back-prisma-change`     | `/front-ui-ux`             |
-| `/back-swagger-docs`      | `/front-typescript-strict` |
-| `/back-set-external-lib`  | `/front-design`            |
-| `/back-standardize-code`  |                            |
-| `/back-update-docs`       |                            |
+Abra <http://localhost:3000>. API em <http://localhost:3001/api>, Swagger em
+<http://localhost:3001/docs>.
 
-A ideia é que você clone, configure e já comece a delegar tarefas ao Claude Code em linguagem natural ou via *slash commands*.
+---
 
 ## Pré-requisitos
 
-- Node.js 20+ e npm
-- Git
-- Acesso a uma instância PostgreSQL (local, em container, gerenciado em nuvem — qualquer uma serve)
-- [Claude Code](https://claude.com/claude-code) instalado, se for usar o fluxo assistido por IA
-- *(Opcional)* Docker e Docker Compose — apenas se quiser subir o PostgreSQL local via o `docker-compose.yml` que acompanha o `back-end/`
+| O que                | Por quê                                       | Como o template lida                        |
+| -------------------- | --------------------------------------------- | ------------------------------------------- |
+| **Make**             | ponto de entrada cross-platform               | macOS/Linux: já vem. Windows: ver abaixo    |
+| **Node 20+ e npm**   | runtime das duas apps                         | `make setup` instala se faltar              |
+| **Git**              | clonar e versionar                            | instale manualmente se ainda não tiver      |
+| Banco de dados       | persistência                                  | **SQLite embarcado** — nada para instalar   |
+| Docker               | —                                             | **não usamos**                              |
 
-## Clonando o repositório
+### Windows — instalando Make
+
+Escolha um dos três (rode em PowerShell **Administrador**):
+
+```powershell
+# 1) Scoop  (recomendado p/ devs)
+scoop install make
+
+# 2) Chocolatey
+choco install make
+
+# 3) Git Bash + Make do MSYS2 (já vem `make` em muitas distros do Git)
+```
+
+Em seguida abra um novo PowerShell e siga o **TL;DR**. Os scripts em
+`scripts/*.ps1` cuidam do resto.
+
+### macOS
+
+Make já vem com as Command Line Tools (`xcode-select --install`).
+Se Node faltar, `make setup` instala via Homebrew (`brew install node@20`).
+
+### Linux (Ubuntu/Debian/Fedora/Arch/Alpine)
+
+`build-essential` ou equivalente cobre o Make. Se Node faltar, `make setup`
+instala via `apt`/`dnf`/`pacman`/`apk` automaticamente.
+
+---
+
+## Tutorial passo a passo
+
+### 1. Clone
 
 ```bash
-git clone <url-do-repositorio>
-cd immersion-project-template
+git clone https://github.com/loomi/claudecode-local-project-template.git meu-projeto
+cd meu-projeto
 ```
 
-## Banco de dados (importante)
-
-O back-end **não** sobe banco automaticamente. Antes de rodar, garanta que existe uma instância PostgreSQL acessível e que as variáveis de ambiente em `back-end/.env` apontam corretamente para ela. Sem isso, as migrations e a aplicação irão falhar.
-
-No mínimo, defina em `back-end/.env`:
-
-```env
-DATABASE_URL=postgresql://USUARIO:SENHA@HOST:PORTA/NOME_DO_BANCO?schema=public
-```
-
-Use o banco que preferir:
-
-- **Postgres já existente** (local, na sua máquina, ou remoto/nuvem): basta apontar a `DATABASE_URL` para ele.
-- **Postgres via Docker (opcional)**: se você quiser, o `back-end/docker-compose.yml` sobe um container pronto com as credenciais de `.env.example`. Nesse caso:
-  ```bash
-  cd back-end
-  docker compose up -d
-  ```
-  As variáveis `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` e `POSTGRES_PORT` no `.env` controlam o container e devem permanecer **consistentes com a `DATABASE_URL`**.
-
-## Back-end
+### 2. Setup automático
 
 ```bash
-cd back-end
-npm install
-cp .env.example .env          # ajuste DATABASE_URL para o seu banco
-npm run prisma:generate
-npm run prisma:migrate
-npm run start:dev
+make setup
 ```
 
-A API ficará disponível em `http://localhost:3001/api` e o Swagger em `http://localhost:3001/docs`.
+O script `scripts/setup.sh` (ou `setup.ps1` no Windows):
 
-Comandos úteis:
+1. detecta o SO,
+2. verifica Node ≥ 20 — se faltar, instala via gerenciador nativo,
+3. roda `npm install` no `back-end/` e `front-end/`,
+4. copia `.env.example` → `.env` (back) e `.env.local` (front),
+5. roda `prisma generate` + `prisma migrate dev --name init`,
+6. cria `back-end/prisma/dev.db` (SQLite).
 
-| Comando                 | Descrição                          |
-| ----------------------- | ---------------------------------- |
-| `npm run lint`          | Lint com ESLint                    |
-| `npm test`              | Testes unitários (Jest)            |
-| `npm run test:e2e`      | Testes end-to-end                  |
-| `npm run prisma:studio` | Abre o Prisma Studio               |
-| `npm run db:reset`      | Reseta e re-aplica as migrations   |
+Idempotente — pode rodar quantas vezes quiser.
 
-## Front-end
-
-Em outro terminal, na raiz do projeto:
+### 3. Subir tudo
 
 ```bash
-cd front-end
-npm install
-cp .env.example .env.local
-npm run dev
+make dev
 ```
 
-A aplicação ficará disponível em `http://localhost:3000`. Por padrão, ela aponta para `http://localhost:3001/api` — mantenha o back-end rodando antes de iniciar o front.
+Inicia back-end e front-end em paralelo. `Ctrl-C` derruba os dois.
 
-Comandos úteis:
+| Onde         | URL                                        |
+| ------------ | ------------------------------------------ |
+| Front-end    | <http://localhost:3000>                    |
+| API          | <http://localhost:3001/api>                |
+| Swagger      | <http://localhost:3001/docs>               |
+| Health check | <http://localhost:3001/api/health>         |
 
-| Comando             | Descrição                    |
-| ------------------- | ---------------------------- |
-| `npm run build`     | Build de produção            |
-| `npm run start`     | Sobe a build de produção     |
-| `npm run lint`      | Lint via `next lint`         |
-| `npm run typecheck` | Checagem de tipos com `tsc`  |
+### 4. Trabalhar com o banco
 
-## Ordem recomendada para subir tudo
+```bash
+make studio        # GUI do Prisma — http://localhost:5555
+make migrate       # nova migração após editar schema.prisma
+make reset         # apaga dev.db e reaplica tudo (cuidado, dev only)
+```
 
-1. Garanta um PostgreSQL acessível e atualize `back-end/.env` com a `DATABASE_URL` correta (ou rode `docker compose up -d` em `back-end/` se quiser usar o container).
-2. `npm run prisma:migrate` em `back-end/`
-3. `npm run start:dev` em `back-end/`
-4. `npm run dev` em `front-end/`
+O arquivo `back-end/prisma/dev.db` é local e está no `.gitignore`. Para
+mudar a localização, edite `DATABASE_URL` em `back-end/.env`.
 
-## Trabalhando com Claude Code
+### 5. Verificar antes de commitar
 
-Abra o Claude Code **na raiz do monorepo** — uma única sessão enxerga tanto o back-end quanto o front-end e tem acesso a todas as *skills*. Descreva a tarefa em linguagem natural ou invoque *skills* diretamente:
+```bash
+make verify
+```
 
-- `/back-add-feature criar módulo de pedidos com CRUD`
-- `/back-prisma-change adicionar campo "status" em Order`
-- `/back-add-tests cobrir OrdersService`
-- `/front-ui-ux revisar acessibilidade da página de checkout`
-- `/front-optimize reduzir bundle da home`
+Roda lint do back, build do back e typecheck do front. **É exatamente o
+mesmo comando que o Stop hook do Claude Code dispara ao fim de cada turno**
+(`.claude/settings.json`) — então, se trabalhou com o agente, já passou
+por ele.
 
-Cada *skill* declara seu *scope* (`back-end/` ou `front-end/`) e segue as convenções do `CLAUDE.md` correspondente — o agente *cd* para o diretório certo, lê o guia, e roda *lint*/*build*/testes antes de declarar concluído.
+### 6. Comandos por subprojeto
 
-## Estrutura geral
+```bash
+make -C back-end help      # lista alvos do back
+make -C front-end help     # lista alvos do front
+```
+
+---
+
+## Alvos do Makefile (raiz)
+
+| Comando            | O que faz                                                 |
+| ------------------ | --------------------------------------------------------- |
+| `make setup`       | Instala Node (se faltar), deps, `.env`, primeira migração |
+| `make dev`         | Back + Front em paralelo                                  |
+| `make dev-back`    | Só back-end (watch)                                       |
+| `make dev-front`   | Só front-end (Next dev)                                   |
+| `make verify`      | Lint + build (back) + typecheck (front)                   |
+| `make test`        | Testes unitários do back                                  |
+| `make migrate`     | `prisma migrate dev`                                      |
+| `make studio`      | Prisma Studio                                             |
+| `make reset`       | Apaga SQLite e reaplica migrações                         |
+| `make clean`       | Remove `node_modules`, `dist`, `.next`, `dev.db`          |
+| `make os`          | Mostra o SO detectado                                     |
+
+---
+
+## Estrutura
 
 ```
 .
+├── Makefile                      # entrada cross-platform
+├── CLAUDE.md                     # regras do monorepo (perf, footprint)
 ├── .claude/
-│   └── skills/              # skills compartilhadas (back-* e front-*)
-├── back-end/                # API NestJS — ver back-end/CLAUDE.md
-└── front-end/               # App Next.js — ver front-end/CLAUDE.md
+│   ├── settings.json             # Stop hook → make verify
+│   ├── commands/                 # slash commands
+│   └── skills/                   # skills back-* e front-*
+├── scripts/
+│   ├── setup.sh    setup.ps1     # bootstrap por SO
+│   ├── dev.sh      dev.ps1       # roda back + front em paralelo
+│   └── verify.sh   verify.ps1    # lint + build + typecheck
+├── back-end/                     # NestJS + Prisma + SQLite
+│   ├── CLAUDE.md                 # regras do back
+│   ├── Makefile                  # wrappers npm
+│   └── prisma/schema.prisma      # provider = "sqlite"
+└── front-end/                    # Next.js + TS strict
+    ├── CLAUDE.md                 # regras do front
+    └── Makefile                  # wrappers npm
 ```
 
-Consulte os `README.md` e `CLAUDE.md` de cada subprojeto para detalhes de arquitetura, convenções e *recipes* completas.
-<!-- ci/cd test 1778514086 -->
-<!-- pipeline test 1778590224 -->
+---
+
+## Vibe-coding com Claude Code
+
+Abra o Claude Code **na raiz do monorepo** — uma sessão única vê os dois
+subprojetos e todas as skills em `.claude/skills/`. Use linguagem natural
+ou slash commands:
+
+```
+/back-add-feature criar módulo de pedidos com CRUD
+/back-prisma-change adicionar campo "status" em Order
+/front-ui-ux revisar acessibilidade da página de checkout
+/front-optimize reduzir bundle da home
+```
+
+Toda vez que o agente termina um turno, o Stop hook em
+`.claude/settings.json` roda `make verify`. Se a verificação falhar, a
+próxima instrução do agente já começa pelo conserto — você nunca herda um
+projeto quebrado.
+
+### Limites de performance (resumo)
+
+`CLAUDE.md` na raiz lista as regras completas. Em uma frase: **nada de
+serviços hospedados, nada de Docker obrigatório, RAM idle < 1.5 GB,
+bundle inicial < 250 KB gzip, sem N+1 no Prisma**. O agente lê essas
+regras antes de propor mudanças.
+
+---
+
+## Trocando o nome do projeto
+
+1. `back-end/package.json` → campo `"name"`
+2. `front-end/package.json` → campo `"name"`
+3. `back-end/src/main.ts` → título do Swagger
+4. Renomeie o diretório clonado, se quiser.
+
+---
+
+## Troubleshooting rápido
+
+| Sintoma                                          | Causa provável / fix                                          |
+| ------------------------------------------------ | ------------------------------------------------------------- |
+| `make: command not found` (Windows)              | Instale Make (`scoop install make` ou `choco install make`)   |
+| `npx prisma migrate` reclama de provider         | Apagou `dev.db`? Rode `make reset`                            |
+| Porta 3000/3001 ocupada                          | Mate o processo ou ajuste `PORT` em `back-end/.env`           |
+| Stop hook não dispara                            | Verifique `.claude/settings.json` e se está rodando na raiz   |
+| `EACCES` ao instalar Node no Linux               | `make setup` chama `sudo`; tenha sudo ativo ou instale manual |
+
+---
+
+## Licença
+
+UNLICENSED — adapte conforme o projeto que cresce a partir daqui.

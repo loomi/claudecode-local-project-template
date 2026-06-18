@@ -46,7 +46,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserEntity, isArray: true })
   async findAll(): Promise<UserEntity[]> {
     const users = await this.usersService.findAll();
-    return users.map(UserEntity.fromPrisma);
+    return users.map((u) => UserEntity.fromPrisma(u));
   }
 
   @Get(':id')

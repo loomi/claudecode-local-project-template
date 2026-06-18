@@ -5,8 +5,27 @@ repository. Read it before making non-trivial changes.
 
 ## What this is
 
-A NestJS 11 + Prisma (PostgreSQL) + Swagger back-end scaffold for the Loomi
-Immersion project. The shape of the project is intentional — keep it.
+A NestJS 11 + Prisma + **SQLite** + Swagger back-end scaffold. SQLite is
+deliberate: no daemons, no Docker, no hosted DB. The DB file lives at
+`prisma/dev.db`. The shape of the project is intentional — keep it.
+
+## Performance & footprint rules
+
+Read the root `CLAUDE.md` for the full list. Back-end specifics:
+
+- **Single PrismaClient.** Only `PrismaService` instantiates the client.
+  Never `new PrismaClient()` in a feature module — it leaks connections
+  and corrupts SQLite under contention.
+- **SQLite means single-writer.** Long transactions block everything else.
+  Keep transactions short. Use `prisma.$transaction(async tx => ...)` only
+  when you genuinely need atomicity.
+- **No N+1.** Reach for `include`/`select` first. If you find yourself
+  looping `findUnique`, refactor to one query with `where: { id: { in } }`.
+- **No background jobs.** No cron, no queue, no polling loop in this
+  service. If you need scheduled work, document it in a TODO — the
+  template stays one-process.
+- **Watcher overhead.** `nest start --watch` already costs ~150 MB.
+  Don't add `nodemon`, `tsx watch`, or a second watcher on top.
 
 ## Folder map (authoritative)
 
@@ -118,6 +137,8 @@ the typed client is in sync before touching feature code.
 ## Things to avoid
 
 - Don't introduce a second ORM/query builder. Prisma is the only data layer.
+- Don't change the Prisma `provider` away from `sqlite`. Switching to
+  Postgres / MySQL defeats the zero-setup promise of this template.
 - Don't add custom error envelopes per-controller — use the global filter.
 - Don't read `process.env` directly outside `src/config/`.
 - Don't put business logic in controllers; controllers stay thin (validation
@@ -126,6 +147,8 @@ the typed client is in sync before touching feature code.
   `forbidNonWhitelisted` are deliberate.
 - Don't use parent-relative imports (`../`, `../../`). Use the path
   aliases (`@/`, `@common/`, `@config/`, `@prisma-svc/`, `@modules/`).
+- Don't add Redis/RabbitMQ/BullMQ/Bee/Kafka clients. The template is
+  single-process by design.
 
 ## Where things live (quick lookup)
 

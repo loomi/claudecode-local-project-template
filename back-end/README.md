@@ -1,12 +1,13 @@
-# Immersion Project — Back-end
+# Back-end (Local Template)
 
-NestJS 11 + Prisma (PostgreSQL) + Swagger starter for the Loomi Immersion project.
+NestJS 11 + Prisma + **SQLite** + Swagger starter — zero external services
+required.
 
 ## Stack
 
 - **Runtime:** Node.js 20+
 - **Framework:** [NestJS 11](https://docs.nestjs.com)
-- **ORM:** [Prisma 6](https://www.prisma.io/docs) targeting PostgreSQL
+- **ORM:** [Prisma 6](https://www.prisma.io/docs) targeting **SQLite** (file at `prisma/dev.db`)
 - **API docs:** [Swagger / OpenAPI](https://swagger.io) via `@nestjs/swagger`
 - **Validation:** `class-validator` + `class-transformer` through a global `ValidationPipe`
 - **Config:** `@nestjs/config` reading from `.env`
@@ -45,18 +46,10 @@ as needed.
 
 - Node.js **20.x** or newer
 - npm **10+**
-- A reachable PostgreSQL **14+** instance
 
-> The fastest way to get PostgreSQL locally is the bundled `docker-compose.yml`
-> (postgres:15-alpine, persistent volume, healthcheck):
-> ```bash
-> docker compose up -d        # start the database in the background
-> docker compose logs -f      # tail the logs
-> docker compose down         # stop (data is preserved in the volume)
-> docker compose down -v      # stop and wipe the data volume
-> ```
-> Credentials and port can be overridden via `POSTGRES_USER`,
-> `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` in your `.env`.
+> Database: **SQLite** (file at `prisma/dev.db`). Nothing to install — the
+> file is created by `prisma migrate` on first run. To use the GUI, run
+> `npm run prisma:studio`.
 
 ## Setup
 
@@ -151,7 +144,7 @@ subclasses freely.
 | `NODE_ENV`      | `development`                                                   | Runtime mode                           |
 | `PORT`          | `3001`                                                          | HTTP listen port                       |
 | `SWAGGER_PATH`  | `docs`                                                          | Mount path for Swagger UI              |
-| `DATABASE_URL`  | `postgresql://postgres:postgres@localhost:5432/immersion_db...` | PostgreSQL connection string for Prisma |
+| `DATABASE_URL`  | `file:./dev.db`                                                 | SQLite database file (relative to `prisma/`) |
 
 ## Adding a new feature module
 

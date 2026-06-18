@@ -2,13 +2,17 @@
 // After editing this file, run:
 //   npx prisma generate         # regenerate the typed client
 //   npx prisma migrate dev      # create and apply a development migration
+//
+// Datasource is SQLite for zero-setup local development. The DB file lives at
+// prisma/dev.db by default (see .env.example). For production swap the
+// provider/url and rerun migrations.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
