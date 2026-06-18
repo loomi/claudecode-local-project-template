@@ -40,7 +40,7 @@ else
   PRINT_OS  = @echo "Host OS: $(HOST_OS)"
 endif
 
-.PHONY: help setup dev dev-back dev-front verify test migrate studio reset clean os
+.PHONY: help setup dev dev-back dev-front verify audit test migrate studio reset clean os
 
 help:
 	@echo "Targets:"
@@ -48,7 +48,8 @@ help:
 	@echo "  dev         Run back-end + front-end in parallel"
 	@echo "  dev-back    Run back-end only"
 	@echo "  dev-front   Run front-end only"
-	@echo "  verify      Lint + build (back-end) + typecheck (front-end)"
+	@echo "  verify      Lint + build (back-end) + typecheck/lint (front-end) + npm audit"
+	@echo "  audit       npm audit (high+critical only) for both subprojects"
 	@echo "  test        Run back-end unit tests"
 	@echo "  migrate     Prisma migrate dev"
 	@echo "  studio      Prisma Studio (DB GUI)"
@@ -72,6 +73,12 @@ dev-front:
 
 verify:
 	$(call RUN_SH,verify)
+
+audit:
+	@echo "[audit] back-end"
+	@cd back-end && npm audit --audit-level=high --omit=dev
+	@echo "[audit] front-end"
+	@cd front-end && npm audit --audit-level=high --omit=dev
 
 test:
 	$(MAKE) -C back-end test

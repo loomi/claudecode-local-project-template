@@ -23,4 +23,10 @@ Push-Location front-end; try { npm run typecheck --silent } catch { Pop-Location
 Log "front-end: lint"
 Push-Location front-end; try { npm run lint --silent } catch { Pop-Location; Fail "front-end lint failed" }; Pop-Location
 
+Log "back-end: npm audit (high+critical)"
+Push-Location back-end; try { npm audit --audit-level=high --omit=dev } catch { Pop-Location; Fail "back-end npm audit found high/critical vulnerabilities" }; Pop-Location
+
+Log "front-end: npm audit (high+critical)"
+Push-Location front-end; try { npm audit --audit-level=high --omit=dev } catch { Pop-Location; Fail "front-end npm audit found high/critical vulnerabilities" }; Pop-Location
+
 Log "all green"

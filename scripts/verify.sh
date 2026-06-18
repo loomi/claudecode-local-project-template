@@ -27,4 +27,12 @@ log "front-end: typecheck"
 log "front-end: lint"
 ( cd front-end && npm run lint --silent ) || fail "front-end lint failed"
 
+# Supply-chain gate. We block on high/critical only — moderates appear and
+# disappear as transitive deps churn; high+critical is the actionable signal.
+log "back-end: npm audit (high+critical)"
+( cd back-end && npm audit --audit-level=high --omit=dev ) || fail "back-end npm audit found high/critical vulnerabilities"
+
+log "front-end: npm audit (high+critical)"
+( cd front-end && npm audit --audit-level=high --omit=dev ) || fail "front-end npm audit found high/critical vulnerabilities"
+
 log "all green"

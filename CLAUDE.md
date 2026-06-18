@@ -164,7 +164,8 @@ A Claude Code **Stop hook** (configured in `.claude/settings.json`) runs
 `make verify` after every agent turn. `make verify` performs:
 
 - back-end: `npm run lint` + `npm run build`
-- front-end: `npm run typecheck`
+- front-end: `npm run typecheck` + `npm run lint`
+- both: `npm audit --audit-level=high --omit=dev` (supply-chain gate)
 
 If verify fails, the next turn must start by resolving the failure before
 introducing new work. Don't suppress the hook to "move on" — silent

@@ -147,7 +147,8 @@ make -C front-end help     # lista alvos do front
 | `make dev`         | Back + Front em paralelo                                  |
 | `make dev-back`    | Só back-end (watch)                                       |
 | `make dev-front`   | Só front-end (Next dev)                                   |
-| `make verify`      | Lint + build (back) + typecheck (front)                   |
+| `make verify`      | Lint + build (back) + typecheck/lint (front) + npm audit  |
+| `make audit`       | npm audit (high+critical only) ambos os subprojetos       |
 | `make test`        | Testes unitários do back                                  |
 | `make migrate`     | `prisma migrate dev`                                      |
 | `make studio`      | Prisma Studio                                             |
