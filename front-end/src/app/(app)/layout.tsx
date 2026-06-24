@@ -1,4 +1,3 @@
-import Image from 'next/image'
 import Link from 'next/link'
 
 import { RequireAuth } from '@/features/auth/components/RequireAuth'
@@ -11,14 +10,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 border-b border-border/60 bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
             <Link href="/" className="flex items-center gap-2">
-              <Image
-                src="/gzero-logo.png"
-                alt="Gzero"
-                width={56}
-                height={20}
-                sizes="56px"
-                className="opacity-80"
-              />
               <span className="font-display text-sm font-semibold">Conta</span>
             </Link>
             <AccountTopbar />

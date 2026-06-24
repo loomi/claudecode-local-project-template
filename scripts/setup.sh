@@ -102,14 +102,32 @@ install_backend() {
   log "installing back-end dependencies"
   ( cd back-end && npm install --no-audit --no-fund --prefer-offline )
   setup_env_file back-end .env.example .env
-  log "running Prisma generate + migrate (SQLite)"
-  ( cd back-end \
-      && npx prisma generate \
-      && if [ -d prisma/migrations ] && [ -n "$(ls -A prisma/migrations 2>/dev/null | grep -v migration_lock.toml || true)" ]; then \
-           npx prisma migrate deploy; \
-         else \
-           npx prisma migrate dev --name init --skip-seed; \
-         fi )
+
+  # Pick the active provider (swaps schema.prisma + copies migrations in).
+  # Default sqlite — keeps the zero-daemon promise for `make setup`.
+  local provider="${DATABASE_PROVIDER:-sqlite}"
+  log "preparing database provider: $provider"
+  bash scripts/db-prepare.sh
+
+  log "running Prisma generate + migrate ($provider)"
+  ( cd back-end && npx prisma generate )
+
+  local has_migrations=""
+  if [ -d back-end/prisma/migrations ] && \
+     [ -n "$(ls -A back-end/prisma/migrations 2>/dev/null | grep -v migration_lock.toml || true)" ]; then
+    has_migrations=1
+  fi
+
+  if [ "$provider" = "postgresql" ]; then
+    # Never `migrate dev` in setup (needs a shadow DB). Deploy committed migrations.
+    ( cd back-end && npx prisma migrate deploy ) || die \
+      "Postgres migrate deploy failed. Set DATABASE_URL to a running PostgreSQL (DATABASE_PROVIDER=postgresql) and rerun 'make setup'."
+  elif [ -n "$has_migrations" ]; then
+    ( cd back-end && npx prisma migrate deploy )
+  else
+    # First-time sqlite with no migrations copied in — create the baseline.
+    ( cd back-end && npx prisma migrate dev --name init --skip-seed )
+  fi
 }
 
 install_frontend() {

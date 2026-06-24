@@ -5,9 +5,20 @@ repository. Read it before making non-trivial changes.
 
 ## What this is
 
-A NestJS 11 + Prisma + **SQLite** + Swagger back-end scaffold. SQLite is
-deliberate: no daemons, no Docker, no hosted DB. The DB file lives at
-`prisma/dev.db`. The shape of the project is intentional — keep it.
+A NestJS 11 + Prisma + Swagger back-end scaffold. The data layer is Prisma over
+**SQLite or PostgreSQL**, chosen by `DATABASE_PROVIDER`:
+
+- **SQLite** (default) — zero-setup local dev. No daemon, no Docker. The DB file
+  lives at `prisma/dev.db`.
+- **PostgreSQL** — the prioritized production path (required for multi-pod /
+  scale-to-zero; see the root `CLAUDE.md` and `docs/deployment.md`).
+
+`scripts/db-prepare` swaps the Prisma `provider` and copies the matching
+migration set into `prisma/migrations/` (the active dir is git-ignored
+generated state; the committed sets are `prisma/migrations-sqlite/` and
+`prisma/migrations-postgres/`). Keep schema and queries **provider-agnostic** —
+no provider-specific raw SQL unless gated on `DATABASE_PROVIDER`. The shape of
+the project is intentional — keep it.
 
 ## Security checklist (read before every change)
 
@@ -55,6 +66,38 @@ Read the root `CLAUDE.md` for the full list. Back-end specifics:
   template stays one-process.
 - **Watcher overhead.** `nest start --watch` already costs ~150 MB.
   Don't add `nodemon`, `tsx watch`, or a second watcher on top.
+
+## Cloud-readiness (Karpenter / scale-to-zero)
+
+Production runs on Kubernetes with Karpenter — pods get SIGTERM'd, the
+deployment can scale to zero, and multiple pods can run at once. The full story
+is in the root `CLAUDE.md` ("Cloud behavior") and `docs/deployment.md`. Back-end
+specifics:
+
+- **Graceful shutdown stays on.** `main.ts` calls `app.enableShutdownHooks()`.
+  Don't remove it. Don't add anything that ignores SIGTERM or keeps the event
+  loop alive (stray `setInterval`, un-`unref`'d timers, open sockets) — it
+  blocks clean termination inside the grace window.
+- **Health probes are contract, not decoration:**
+  - `GET /api/health/live` — liveness, **no DB call**. Cheap "process is up."
+  - `GET /api/health/ready` — readiness, pings the DB (`Prisma.sql\`SELECT 1\``)
+    and returns **503** when the DB is down so traffic stops being routed.
+  - `GET /api/health` — uptime summary, kept for convenience.
+  Keep liveness DB-free and readiness honest.
+- **Stateless or it's a bug.** No in-memory source of truth (counters, caches,
+  sessions) — two pods must agree. State lives in the DB. Shared ephemeral state
+  (rate-limit counters, locks) means an external store, which must be
+  config-gated, off by default, and explicitly opted into.
+- **Config guards.** In `production`, the app refuses to boot with the default
+  `JWT_ACCESS_SECRET`, and CORS is driven by `CORS_ORIGINS` (comma-separated).
+  Keep both guards.
+- **SQLite caveat.** SQLite is a local file — fine for dev and single-instance
+  (+ PVC) deploys, but it does not survive scale-to-zero on ephemeral storage
+  and can't be shared across pods. Multi-pod prod needs a networked DB swapped
+  in at deploy time. Flag this when a feature's correctness depends on it.
+- **Prefer idempotent writes.** Clients retry through cold starts; design
+  non-idempotent writes to detect duplicates (unique constraint / idempotency
+  key) rather than double-apply.
 
 ## Folder map (authoritative)
 
@@ -166,8 +209,12 @@ the typed client is in sync before touching feature code.
 ## Things to avoid
 
 - Don't introduce a second ORM/query builder. Prisma is the only data layer.
-- Don't change the Prisma `provider` away from `sqlite`. Switching to
-  Postgres / MySQL defeats the zero-setup promise of this template.
+- Don't add a third Prisma provider. Only `sqlite` and `postgresql` are
+  supported, via `DATABASE_PROVIDER`. Don't hand-edit the `provider` line in
+  `schema.prisma` — `scripts/db-prepare` owns it. When you change the schema,
+  regenerate **both** migration sets so they stay in lockstep (run
+  `prisma migrate dev` on the sqlite set, and generate the postgres SQL with
+  `prisma migrate diff` against an empty-to-schema target).
 - Don't add custom error envelopes per-controller — use the global filter.
 - Don't read `process.env` directly outside `src/config/`.
 - Don't put business logic in controllers; controllers stay thin (validation

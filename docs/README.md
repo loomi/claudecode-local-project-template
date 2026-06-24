@@ -19,6 +19,8 @@ Monorepo com dois sub-projetos independentes e arquivos compartilhados na raiz.
 
 - [Back-end](./back-end.md) — arquitetura, módulos, Prisma, convenções.
 - [Front-end](./front-end.md) — App Router, features, estado de servidor (TanStack Query).
+- [Performance](./performance.md) — disciplina de recursos: construir sempre a versão mais leve que atende o requisito.
+- [Deployment](./deployment.md) — Kubernetes + Karpenter: scale-to-zero, graceful shutdown, health probes, cold start (~15s) e o trade-off do SQLite.
 
 ## Onde começar
 

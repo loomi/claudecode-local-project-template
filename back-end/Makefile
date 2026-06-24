@@ -1,7 +1,7 @@
 # Back-end Makefile. Thin wrappers around npm scripts so the workflow is
 # discoverable and identical across operating systems.
 
-.PHONY: help install dev build start lint test test-e2e migrate deploy generate studio reset
+.PHONY: help install dev build start lint test test-e2e db-prepare migrate deploy generate studio reset
 
 help:
 	@echo "Back-end targets:"
@@ -12,6 +12,7 @@ help:
 	@echo "  lint        npm run lint"
 	@echo "  test        npm test"
 	@echo "  test-e2e    npm run test:e2e"
+	@echo "  db-prepare  swap Prisma provider + migrations (DATABASE_PROVIDER)"
 	@echo "  migrate     prisma migrate dev"
 	@echo "  deploy      prisma migrate deploy"
 	@echo "  generate    prisma generate"
@@ -25,6 +26,7 @@ start:     ; npm run start:prod
 lint:      ; npm run lint
 test:      ; npm test
 test-e2e:  ; npm run test:e2e
+db-prepare: ; bash ../scripts/db-prepare.sh
 migrate:   ; npx prisma migrate dev
 deploy:    ; npx prisma migrate deploy
 generate:  ; npx prisma generate

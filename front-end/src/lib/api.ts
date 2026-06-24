@@ -30,11 +30,39 @@ export class ApiError extends Error {
   }
 }
 
-interface RequestOptions extends Omit<RequestInit, 'body'> {
+/** HTTP statuses emitted by a backend that is still cold-starting / waking. */
+const TRANSIENT_STATUSES = new Set([502, 503, 504])
+
+/**
+ * True for errors that signal the server never processed the request and a
+ * retry is safe: network/timeout (ApiError status 0) or a transient 5xx.
+ * Shared with the React Query layer so retry policy stays DRY.
+ */
+export function isTransientError(err: unknown): boolean {
+  if (err instanceof ApiError) {
+    return err.status === 0 || TRANSIENT_STATUSES.has(err.status)
+  }
+  // A non-ApiError (e.g. a raw TypeError from fetch) is treated as network.
+  return err instanceof Error
+}
+
+export interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
   auth?: boolean
   skipRefresh?: boolean
+  /** Per-call request timeout in ms. Defaults to DEFAULT_TIMEOUT_MS. */
+  timeoutMs?: number
+  /** Per-call max retries on transient/cold-start failures. */
+  retries?: number
+  /** Invoked before each cold-start retry so the UX can show a wake hint. */
+  onWakeRetry?: (attempt: number) => void
 }
+
+/** ~15s cold start + margin. */
+const DEFAULT_TIMEOUT_MS = 20_000
+const DEFAULT_MAX_RETRIES = 4
+const BASE_BACKOFF_MS = 500
+const MAX_BACKOFF_MS = 8_000
 
 let refreshPromise: Promise<AuthTokens> | null = null
 
@@ -66,6 +94,42 @@ async function refreshTokens(): Promise<AuthTokens> {
   return refreshPromise
 }
 
+/** fetch with an AbortController timeout. Throws ApiError(0) on timeout. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError('Request timed out', 0)
+    }
+    // Network-level failure (connection refused, DNS, etc.).
+    throw new ApiError(
+      err instanceof Error ? err.message : 'Network error',
+      0,
+    )
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Exponential backoff with small deterministic jitter, capped. */
+function backoffDelay(attempt: number): number {
+  const base = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS)
+  // Deterministic-ish jitter: up to +25% of base, no crypto needed.
+  const jitter = (base / 4) * ((attempt * 7) % 4) * 0.25
+  return Math.min(base + jitter, MAX_BACKOFF_MS)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function parseError(res: Response): Promise<ApiError> {
   let payload: BackendError | null = null
   try {
@@ -79,11 +143,22 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(message, res.status, details)
 }
 
-async function rawRequest<T>(
+/** Single request attempt: applies timeout, headers, and 401-refresh. */
+async function attemptRequest<T>(
   path: string,
   options: RequestOptions,
 ): Promise<T> {
-  const { body, auth = true, headers, skipRefresh, ...rest } = options
+  const {
+    body,
+    auth = true,
+    headers,
+    skipRefresh,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    // Pull retry-only fields out so they don't leak into RequestInit.
+    retries: _retries,
+    onWakeRetry: _onWakeRetry,
+    ...rest
+  } = options
 
   const finalHeaders: Record<string, string> = {
     ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -95,11 +170,15 @@ async function rawRequest<T>(
     if (access) finalHeaders['Authorization'] = `Bearer ${access}`
   }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    headers: finalHeaders,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}${path}`,
+    {
+      ...rest,
+      headers: finalHeaders,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    },
+    timeoutMs,
+  )
 
   if (res.status === 401 && auth && !skipRefresh && tokenStore.getRefresh()) {
     try {
@@ -108,7 +187,7 @@ async function rawRequest<T>(
       tokenStore.clear()
       throw err
     }
-    return rawRequest<T>(path, { ...options, skipRefresh: true })
+    return attemptRequest<T>(path, { ...options, skipRefresh: true })
   }
 
   if (!res.ok) {
@@ -119,6 +198,29 @@ async function rawRequest<T>(
 
   const json = (await res.json()) as BackendEnvelope<T>
   return json.data
+}
+
+/**
+ * Public entry point: retries transient/cold-start failures with backoff.
+ * Retries cover all methods on connection-level + 502/503/504 signals —
+ * the server never processed the request, so even POST/PATCH/DELETE are
+ * safe to replay in this window.
+ */
+async function rawRequest<T>(
+  path: string,
+  options: RequestOptions,
+): Promise<T> {
+  const maxRetries = options.retries ?? DEFAULT_MAX_RETRIES
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await attemptRequest<T>(path, options)
+    } catch (err) {
+      if (attempt >= maxRetries || !isTransientError(err)) throw err
+      options.onWakeRetry?.(attempt + 1)
+      await sleep(backoffDelay(attempt))
+    }
+  }
 }
 
 export const api = {

@@ -3,7 +3,7 @@
 ## Stack
 - Next.js 15 (App Router)
 - TypeScript strict mode
-- Tailwind CSS v3
+- Tailwind CSS v4
 - TanStack Query v5 (React Query)
 
 ## Project structure
@@ -74,6 +74,31 @@ Read the root `CLAUDE.md` for the full list. Front-end specifics:
 - **Images:** always `next/image` with explicit `sizes`. No raw `<img>`.
 - **No client-side analytics SDKs** in the template. Downstream projects
   can add them.
+
+## Cloud-readiness — assume the server may be asleep
+
+The back-end deploys behind Karpenter and can be **scaled to zero**; the first
+request after that triggers a cold start of up to **~15 s**. The front-end is
+built to wait it out, not flash an error. Full story in the root `CLAUDE.md`
+("Cloud behavior") and `docs/deployment.md`. Front-end rules:
+
+- **Route every call through `src/lib/api.ts`.** It already provides an
+  `AbortController` timeout (~20 s default, `timeoutMs` override) and
+  exponential-backoff retry for transient/cold-start failures (network/timeout
+  and `502/503/504`). Never write a bare `fetch` without a timeout in feature
+  code.
+- **Don't retry `4xx`** (the client doesn't, except the built-in 401→refresh
+  path). Retrying a validation error just hammers a healthy server.
+- **Show a wake state, not an error.** `app/loading.tsx` covers route-level
+  waits; the `onWakeRetry` hook on a request lets a component show "acordando o
+  servidor…". The global `app/error.tsx` boundary offers "tentar novamente" and
+  only appears after retries are exhausted.
+- **TanStack Query is tuned for this** (`QueryProvider.tsx`): retries only on
+  transient errors with capped backoff, conservative mutation retries. Use the
+  shared `isTransientError` helper if you need the same logic elsewhere.
+- **Resource discipline applies here too** — see `docs/performance.md`. Prefer
+  server components, paginate growing lists, lazy-load heavy widgets, and don't
+  add a dependency 30 lines would cover.
 
 ## Custom Slash Commands
 - `/frontend <task>` — two-mode frontend workflow (scaffold or feature/fix/refactor). See `.claude/commands/frontend.md`.

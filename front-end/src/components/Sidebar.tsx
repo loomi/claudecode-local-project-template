@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -30,14 +29,6 @@ export function Sidebar() {
         <AnimatePresence>
           {open && (
             <motion.div key="wordmark" {...fadeIn} className="w-full">
-              <Image
-                src="/gzero-logo.png"
-                alt="Gzero"
-                width={72}
-                height={24}
-                sizes="72px"
-                className="mb-3 brightness-0 invert opacity-75"
-              />
               <h1 className="font-display text-[18px] font-bold leading-tight text-white">
                 Claude Code
               </h1>

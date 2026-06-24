@@ -1,11 +1,13 @@
 # Claude Code Local Project Template
 
-Fullstack monorepo template **100% local** — sem Postgres, sem Docker, sem
-serviços hospedados. Roda em laptops modestos. Pensado para *vibe-coding*
-com [Claude Code](https://claude.com/claude-code): um único `make setup`
-deixa back-end e front-end prontos.
+Fullstack monorepo template com **dev 100% local** — sem Docker e sem serviços
+hospedados na máquina do dev. Roda em laptops modestos. Pensado para
+*vibe-coding* com [Claude Code](https://claude.com/claude-code): um único
+`make setup` deixa back-end e front-end prontos. O banco é **SQLite por padrão**
+(arquivo local, zero setup) e **PostgreSQL** quando preciso (caminho priorizado
+para produção / múltiplos pods), selecionado por `DATABASE_PROVIDER`.
 
-- **Back-end:** NestJS 11 + Prisma + **SQLite** + Swagger + JWT
+- **Back-end:** NestJS 11 + Prisma (**SQLite** ou **PostgreSQL**) + Swagger + JWT
 - **Front-end:** Next.js 15 (App Router) + TypeScript strict + Tailwind v4 + TanStack Query
 - **Orquestração:** Makefile cross-platform (macOS / Linux / Windows) +
   scripts em `bash` e PowerShell que **detectam o SO e instalam o Node se faltar**
@@ -35,7 +37,7 @@ Abra <http://localhost:3000>. API em <http://localhost:3001/api>, Swagger em
 | **Make**             | ponto de entrada cross-platform               | macOS/Linux: já vem. Windows: ver abaixo    |
 | **Node 20+ e npm**   | runtime das duas apps                         | `make setup` instala se faltar              |
 | **Git**              | clonar e versionar                            | instale manualmente se ainda não tiver      |
-| Banco de dados       | persistência                                  | **SQLite embarcado** — nada para instalar   |
+| Banco de dados       | persistência                                  | **SQLite** embarcado por padrão (nada a instalar); **PostgreSQL** opcional via `DATABASE_PROVIDER` |
 | Docker               | —                                             | **não usamos**                              |
 
 ### Windows — instalando Make
@@ -173,10 +175,10 @@ make -C front-end help     # lista alvos do front
 │   ├── setup.sh    setup.ps1     # bootstrap por SO
 │   ├── dev.sh      dev.ps1       # roda back + front em paralelo
 │   └── verify.sh   verify.ps1    # lint + build + typecheck
-├── back-end/                     # NestJS + Prisma + SQLite
+├── back-end/                     # NestJS + Prisma (SQLite ou PostgreSQL)
 │   ├── CLAUDE.md                 # regras do back
 │   ├── Makefile                  # wrappers npm
-│   └── prisma/schema.prisma      # provider = "sqlite"
+│   └── prisma/schema.prisma      # provider trocado por DATABASE_PROVIDER
 └── front-end/                    # Next.js + TS strict
     ├── CLAUDE.md                 # regras do front
     └── Makefile                  # wrappers npm

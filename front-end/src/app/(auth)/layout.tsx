@@ -1,6 +1,3 @@
-import Image from 'next/image'
-import Link from 'next/link'
-
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12">
@@ -13,19 +10,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(to_right,oklch(0_0_0/0.04)_1px,transparent_1px),linear-gradient(to_bottom,oklch(0_0_0/0.04)_1px,transparent_1px)] bg-[size:32px_32px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
       />
 
-      <div className="w-full max-w-md">
-        <Link href="/" className="mb-8 flex items-center justify-center gap-2 text-foreground/70 transition-opacity hover:opacity-100">
-          <Image
-            src="/gzero-logo.png"
-            alt="Gzero"
-            width={56}
-            height={20}
-            sizes="56px"
-            className="opacity-80"
-          />
-        </Link>
-        {children}
-      </div>
+      <div className="w-full max-w-md">{children}</div>
     </main>
   )
 }

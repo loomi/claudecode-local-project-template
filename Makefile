@@ -41,7 +41,7 @@ else
   PRINT_OS  = @echo "Host OS: $(HOST_OS)"
 endif
 
-.PHONY: help setup dev dev-back dev-front verify audit security test migrate studio reset clean os
+.PHONY: help setup dev dev-back dev-front verify audit security test db-prepare migrate studio reset clean os
 
 help:
 	@echo "Targets:"
@@ -53,6 +53,7 @@ help:
 	@echo "  audit       npm audit (high+critical only) for both subprojects"
 	@echo "  security    Trivy dependency scan + descriptive report (gate)"
 	@echo "  test        Run back-end unit tests"
+	@echo "  db-prepare  Swap Prisma provider + migrations (DATABASE_PROVIDER)"
 	@echo "  migrate     Prisma migrate dev"
 	@echo "  studio      Prisma Studio (DB GUI)"
 	@echo "  reset       Wipe SQLite DB and re-apply migrations"
@@ -87,6 +88,9 @@ audit:
 
 test:
 	$(MAKE) -C back-end test
+
+db-prepare:
+	$(call RUN_SH,db-prepare)
 
 migrate:
 	$(MAKE) -C back-end migrate

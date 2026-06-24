@@ -3,9 +3,19 @@
 //   npx prisma generate         # regenerate the typed client
 //   npx prisma migrate dev      # create and apply a development migration
 //
-// Datasource is SQLite for zero-setup local development. The DB file lives at
-// prisma/dev.db by default (see .env.example). For production swap the
-// provider/url and rerun migrations.
+// Dual-provider support: this template runs on BOTH SQLite (default, zero-setup
+// local dev) and PostgreSQL (recommended for production / multi-pod). The active
+// provider is chosen by the DATABASE_PROVIDER env var (sqlite | postgresql).
+//
+// IMPORTANT — do NOT hand-edit the `provider` line below. Prisma requires it to
+// be a static literal (it cannot be env()), so the setup script swaps it to the
+// chosen provider via scripts/db-prepare.{sh,ps1}. The committed value is
+// `sqlite` so local dev works out of the box.
+//
+// Migrations are kept per-provider under prisma/migrations-{provider}/ and the
+// active set is COPIED into prisma/migrations/ at setup time (that dir is
+// git-ignored generated state). Never edit prisma/migrations/ by hand — edit the
+// per-provider source dirs and let db-prepare copy them in.
 
 generator client {
   provider = "prisma-client-js"

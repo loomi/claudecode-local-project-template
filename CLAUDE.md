@@ -24,9 +24,16 @@ Users of this template often run on modest laptops. Every decision must
 respect the following budgets. **If your proposed change violates one of
 these, reconsider the approach — don't ship it and apologize later.**
 
-1. **No hosted services.** SQLite is the only database. Never reintroduce
-   Postgres, Mongo, Redis, RabbitMQ, Kafka, S3, or any other service that
-   requires the user to install / sign up / run a daemon.
+1. **SQL only, two providers.** The data layer is Prisma with **SQLite or
+   PostgreSQL**, selected by `DATABASE_PROVIDER`. SQLite is the **zero-setup
+   local default** (a file, no daemon — keeps `make setup && make dev` fast and
+   dependency-free). **PostgreSQL is the prioritized production path** (it's the
+   only option that survives multi-pod / scale-to-zero — see the Karpenter
+   section and `docs/deployment.md`). Do **not** add any other datastore:
+   no Mongo, Redis, RabbitMQ, Kafka, S3, or anything else requiring the user to
+   install / sign up / run an extra daemon. New work must stay
+   provider-agnostic — write Prisma queries that run on both SQLite and Postgres
+   (no provider-specific raw SQL unless gated by `DATABASE_PROVIDER`).
 2. **No Docker requirement.** Docker may be *optional* but the default path
    is `make setup && make dev` — nothing else.
 3. **No heavy runtime deps.** Before adding a dependency to either
@@ -158,6 +165,126 @@ Treat this as a checklist to walk before declaring a task done.
 - Weaken `tsconfig.json` strictness (`strict`, `noImplicitAny`,
   `strictNullChecks`).
 
+## Resource discipline — think before you build (NON-NEGOTIABLE)
+
+Apps built from this template are deployed on **resource-constrained**
+infrastructure (small pods, scale-to-zero nodes, modest laptops in dev).
+"Lightweight" is not a nice-to-have here — it is the product. The agent's
+default is the **smallest thing that satisfies the actual requirement**, not
+the most featureful thing that is technically possible.
+
+**Before implementing any feature, the agent MUST make the requester reason
+about cost.** When a request implies non-trivial resource use, do not silently
+build the heavy version. Ask — concisely — questions like:
+
+- *What's the real expected load?* (10 req/day vs 10k req/s changes everything.)
+- *Does this need to be real-time, or is on-demand / lazy enough?*
+- *Does this need to persist, or can it be recomputed / cached briefly?*
+- *Can the platform's existing pieces cover it instead of a new dependency,
+  table, background worker, or service?*
+- *What is the cheapest correct version, and what does the expensive version
+  buy that the cheap one doesn't?*
+
+State the lightweight option **first** and recommend it. Only build the heavy
+path when the requester confirms they need it. A feature shipped 10× heavier
+than the requirement is a defect, not a bonus.
+
+Concrete defaults the agent applies without being asked:
+
+1. **Prefer doing nothing in the background.** No polling loops, no cron, no
+   queues, no warm caches that need eviction. Compute on request; let it be
+   lazy. If scheduled work is truly needed, justify it in writing first.
+2. **Prefer stateless.** Hold no in-memory session, counter, cache, or
+   accumulator that would be wrong if the process restarts or a second
+   instance starts. State lives in the DB (or an explicit external store the
+   user opted into) — see the Karpenter section below.
+3. **Pay for data once.** Fetch/select only the columns and rows you use.
+   No `findMany()` then `.filter()` in JS. No over-fetching "just in case."
+4. **Add a dependency only when 30 lines won't do.** Re-check the footprint
+   rules above (≤ ~5 MB transitive, no native Windows build step). A new dep
+   is a permanent tax on cold-start, bundle size, and audit surface.
+5. **Pagination by default** on any list endpoint or list view that can grow.
+   Unbounded result sets are a memory and latency bug waiting to happen.
+6. **Right-size the data type and the work.** Don't load a file into memory to
+   read one line; don't render 5,000 rows the user will never scroll to.
+
+When the agent notices a request that will push the app past the footprint
+budgets (RAM, bundle, cold start, deps), it must say so and propose the
+lighter alternative **before** writing code — not apologize after.
+
+See `docs/performance.md` for the full playbook and decision checklist.
+
+## Cloud behavior — Karpenter & scale-to-zero (NON-NEGOTIABLE)
+
+Dev is 100% local (SQLite, no Docker, `make dev`). **Production is different:**
+downstream apps deploy the back-end to **Kubernetes with Karpenter**, which
+provisions and *de-provisions* nodes to cut cost. That means at any moment:
+
+- A pod can receive **SIGTERM** and be killed (node consolidation, spot
+  reclaim, rollout). The app gets a short grace period to finish, then dies.
+- The deployment can be **scaled to zero**. The next request triggers a node
+  + pod cold start that can take **up to ~15 seconds** before the API answers.
+- More than one pod can run at once (horizontal scale).
+
+Code written in this template — even while it runs locally — **must already be
+written for that reality.** Non-negotiable rules:
+
+### Back-end: be stateless and shut down cleanly
+
+1. **Stateless by default.** No in-process state that must survive a restart or
+   be shared across pods: no in-memory sessions, no module-level mutable
+   counters/caches used as a source of truth, no "the warm instance has the
+   data" assumptions. If two pods running simultaneously would give a wrong
+   answer, the design is wrong. Persist state in the DB. If you genuinely need
+   shared ephemeral state (rate-limit counters, locks), that is an **explicit**
+   architectural decision the requester must opt into — it implies an external
+   store, which collides with the "no hosted services" local rule, so it must
+   be config-gated and off by default.
+2. **Graceful shutdown is mandatory.** `app.enableShutdownHooks()` stays on in
+   `main.ts`. On SIGTERM the app must stop accepting new work, let in-flight
+   requests drain, and close the DB connection (PrismaService `OnModuleDestroy`
+   handles the disconnect). Never add a code path that ignores SIGTERM or holds
+   the event loop open (stray `setInterval`, un-`unref`'d timers, open sockets).
+3. **Health probes are first-class.** The app exposes:
+   - `GET /api/health/live` — **liveness**: cheap, no I/O. "The process is up."
+     Must NOT touch the DB (a slow DB must not get a recovering pod killed).
+   - `GET /api/health/ready` — **readiness**: pings the DB; returns 503 when the
+     DB is unreachable so Karpenter/K8s stops routing traffic to it.
+   - `GET /api/health` — overall summary (uptime), kept for convenience.
+   Keep these accurate. A readiness probe that always returns 200 defeats the
+   purpose during cold start.
+4. **Idempotency & retries.** Because clients retry during cold start (see
+   front-end rules), prefer endpoints that are safe to call twice. For
+   non-idempotent writes, design so a duplicated request is detectable
+   (unique constraint, idempotency key) rather than silently double-applied.
+5. **SQLite is local/single-instance only.** SQLite is a file on the pod's
+   disk — it does **not** survive scale-to-zero on ephemeral storage and
+   **cannot** be shared across multiple pods. The template keeps SQLite for
+   local dev and single-instance deploys (with a persistent volume). A
+   multi-pod / scale-to-zero production deploy needs a networked DB; that swap
+   happens at deploy time and is documented in `docs/deployment.md`. **Do not
+   silently assume SQLite scales horizontally** — flag the tradeoff when a
+   feature depends on it.
+
+### Front-end: assume the server may be asleep
+
+6. **Every API call has a timeout.** Use the resilient client in
+   `src/lib/api.ts` (AbortController-based, ~20s default to cover the ~15s cold
+   start). No bare `fetch` without a timeout in feature code.
+7. **Retry transient failures with backoff.** Connection errors, timeouts, and
+   `502/503/504` mean "server waking up / not ready yet" — retry with
+   exponential backoff (not a tight loop). Never retry `4xx` (except the
+   existing 401→refresh path). The shared client already implements this; route
+   new calls through it.
+8. **Show a "waking up" state, not an error flash.** While the first request
+   retries through a cold start, the UI shows a calm "acordando o servidor…"
+   affordance (see `loading.tsx` / the wake hook), and only surfaces a real
+   error after retries are exhausted. The global `error.tsx` boundary offers
+   "tentar novamente".
+
+See `docs/deployment.md` for probe wiring, SIGTERM handling, the SQLite→prod-DB
+swap, and recommended Karpenter `terminationGracePeriodSeconds` / probe values.
+
 ## Vibe-coding strategy (end-of-turn verification)
 
 A Claude Code **Stop hook** (configured in `.claude/settings.json`) runs
@@ -180,7 +307,9 @@ breakage defeats the point of the template.
 
 ## Things to avoid (template-wide)
 
-- Don't switch the data layer away from Prisma + SQLite.
+- Don't switch the data layer away from Prisma. Both SQLite and PostgreSQL
+  are supported (via `DATABASE_PROVIDER`); don't add a third provider or a
+  second ORM. Keep schema/queries provider-agnostic.
 - Don't introduce a process manager (pm2, foreman) — `make dev` is enough.
 - Don't add monorepo tooling (Nx, Turbo) — two npm workspaces are not a
   monorepo, they're two folders.

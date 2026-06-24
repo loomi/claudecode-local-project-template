@@ -1,6 +1,6 @@
 # Back-end
 
-API REST construída com **NestJS 11** + **Prisma** (SQLite — arquivo local) e documentada via **Swagger**.
+API REST construída com **NestJS 11** + **Prisma** (SQLite por padrão ou PostgreSQL via `DATABASE_PROVIDER`) e documentada via **Swagger**.
 
 ## Arquitetura
 
@@ -64,7 +64,7 @@ back-end/
 ## Camadas em uma requisição
 
 ```
-HTTP → Controller → Service → PrismaService → SQLite (prisma/dev.db)
+HTTP → Controller → Service → PrismaService → SQLite (prisma/dev.db) ou PostgreSQL
                        ↑              ↓
                      DTOs         Filtro/Interceptor globais
 ```

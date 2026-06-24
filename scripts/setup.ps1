@@ -71,8 +71,17 @@ function Install-Backend {
     npm install --no-audit --no-fund --prefer-offline
     Pop-Location
     Setup-EnvFile 'back-end' '.env.example' '.env'
+
+    # Pick the active provider (swaps schema.prisma + copies migrations in).
+    # Default sqlite — keeps the zero-daemon promise for `make setup`.
+    $provider = $env:DATABASE_PROVIDER
+    if (-not $provider) { $provider = 'sqlite' }
+    Log "preparing database provider: $provider"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-prepare.ps1
+    if ($LASTEXITCODE -ne 0) { Die "db-prepare failed for provider '$provider'" }
+
     Push-Location back-end
-    Log "running Prisma generate + migrate (SQLite)"
+    Log "running Prisma generate + migrate ($provider)"
     npx prisma generate
     $migrationsDir = 'prisma/migrations'
     $hasMigrations = $false
@@ -80,7 +89,13 @@ function Install-Backend {
       $items = Get-ChildItem -Path $migrationsDir -Exclude 'migration_lock.toml'
       if ($items.Count -gt 0) { $hasMigrations = $true }
     }
-    if ($hasMigrations) {
+    if ($provider -eq 'postgresql') {
+      # Never `migrate dev` in setup (needs a shadow DB). Deploy committed migrations.
+      npx prisma migrate deploy
+      if ($LASTEXITCODE -ne 0) {
+        Die "Postgres migrate deploy failed. Set DATABASE_URL to a running PostgreSQL (DATABASE_PROVIDER=postgresql) and rerun 'make setup'."
+      }
+    } elseif ($hasMigrations) {
       npx prisma migrate deploy
     } else {
       npx prisma migrate dev --name init --skip-seed
