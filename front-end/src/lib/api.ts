@@ -1,8 +1,11 @@
 import type { AuthTokens } from '@/types/auth'
 import { tokenStore } from './token-store'
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api'
+// Defaults to '/api' (same-origin) so the production build "just works"
+// behind the ingress that routes /api/* to the backend Service. For local
+// dev, set NEXT_PUBLIC_API_URL=http://localhost:3001/api in .env.local —
+// see .env.example.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api' 
 
 interface BackendEnvelope<T> {
   success: true
