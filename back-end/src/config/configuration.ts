@@ -8,6 +8,16 @@ export interface AppConfig {
   jwtAccessExpiresIn: string;
   jwtRefreshExpiresIn: string;
   corsOrigins: string[];
+  /**
+   * Default user upserted at boot. Lets a freshly-deployed (or freshly-set-up
+   * local) app log in without going through /sign-up. Set `seedAdmin.email`
+   * to an empty string to skip seeding entirely.
+   */
+  seedAdmin: {
+    email: string;
+    password: string;
+    name: string;
+  };
 }
 
 const resolveDatabaseProvider = (): AppConfig['databaseProvider'] => {
@@ -28,4 +38,9 @@ export default (): AppConfig => ({
     .filter((origin) => origin.length > 0),
   jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+  seedAdmin: {
+    email: process.env.SEED_ADMIN_EMAIL ?? 'admin@studio.local',
+    password: process.env.SEED_ADMIN_PASSWORD ?? 'studio-admin',
+    name: process.env.SEED_ADMIN_NAME ?? 'Studio Admin',
+  },
 });

@@ -285,6 +285,125 @@ written for that reality.** Non-negotiable rules:
 See `docs/deployment.md` for probe wiring, SIGTERM handling, the SQLite→prod-DB
 swap, and recommended Karpenter `terminationGracePeriodSeconds` / probe values.
 
+## Studio deployment contract (NON-NEGOTIABLE)
+
+When a project provisioned from this template is deployed by the Studio
+control plane, the build + deploy pipeline assumes a **fixed structural
+contract**. Changing any of the items below silently breaks the GitHub
+Actions workflow (`.github/workflows/deploy.yml`), the per-service
+Dockerfiles, or the K8s manifest overlay. The agent MUST treat them as
+load-bearing — propose, document, and verify before touching them.
+
+### Top-level shape — do NOT rename, move, or merge
+
+```
+.
+├── back-end/                # NestJS image. Docker build context = this dir.
+│   ├── Dockerfile           # required path; deploy.yml has it hardcoded
+│   ├── package.json
+│   ├── prisma/
+│   │   ├── schema.prisma    # `provider` line swapped by db-prepare — never hand-edit
+│   │   ├── migrations-sqlite/
+│   │   └── migrations-postgres/
+│   └── src/
+├── front-end/               # Next.js image. Docker build context = this dir.
+│   ├── Dockerfile           # required path
+│   ├── package.json
+│   ├── next.config.ts       # MUST keep `output: 'standalone'`
+│   └── src/
+├── scripts/
+│   ├── db-prepare.sh        # required by deploy.yml (provider swap)
+│   └── db-prepare.ps1
+└── .github/workflows/
+    └── deploy.yml           # injected by the Studio worker — do not edit lightly
+```
+
+Adding a sibling folder is fine. Renaming `back-end/`, `front-end/`,
+`scripts/`, or anything under them is **not** — the workflow's path
+filter (`back-end/**` / `front-end/**`) won't fire, the Docker context
+won't resolve, and the runtime initContainer's `prisma migrate deploy`
+won't find the schema.
+
+### Ports, prefixes, and endpoints
+
+- **Back-end listens on `3001`**, front-end on `3000`. Don't change them
+  — the K8s base (`marcozero-manifests/internal/studio/_base/`) wires
+  Service `targetPort` and probes against those exact ports.
+- **Global API prefix is `/api`.** `main.ts` sets it; the front-end calls
+  `/api/...` same-origin via the ingress. Removing the prefix breaks the
+  ingress path-routing (`/api/* → back-end`, `/* → front-end`).
+- **Health endpoints are part of the contract.** Keep `GET /api/health/live`
+  (no DB), `GET /api/health/ready` (pings DB → 503 when down), and
+  `GET /api/health`. The K8s probes reference these paths.
+
+### Docker build assumptions
+
+- **Builder images are `node:20-alpine`.** Don't bump Node major without
+  also bumping both Dockerfiles (back-end + front-end) and verifying any
+  native deps (bcrypt, sharp, …) ship a prebuilt for the new musl combo.
+- **Frontend uses Next.js standalone output.** `next.config.ts` MUST
+  have `output: 'standalone'`. The frontend Dockerfile only copies
+  `.next/standalone` and `.next/static` — disabling standalone yields a
+  broken image.
+- **`public/` directory.** The frontend Dockerfile `mkdir -p`s it, so an
+  absent `public/` doesn't fail the build — but don't move it to a
+  non-standard path. Likewise for `back-end/dist/`.
+- **Package manager is npm.** `package-lock.json` is committed in both
+  subprojects and the Dockerfiles do `npm ci`. Don't switch to pnpm /
+  yarn / bun — the build will fall back to `npm install` and lose
+  determinism.
+- **Native binaries:** any dep that compiles native (bcrypt, sharp,
+  better-sqlite3, …) MUST work on `node:20-alpine` (musl). When in
+  doubt, the agent runs `docker build -f back-end/Dockerfile back-end`
+  locally before declaring done — production debug-by-tail is much
+  slower.
+
+### Env vars the runtime reads
+
+The K8s overlay populates these from a Secrets Manager-backed secret
+(`<project>-app-secrets`) and a ConfigMap. Adding a new variable means
+also updating the worker's `PostgresProvisionerService` (so the value
+is written to SM) **and** the External Secret. Until then, the variable
+is `undefined` in prod even if it works locally.
+
+Already wired: `DATABASE_URL`, `DATABASE_PROVIDER=postgresql`,
+`JWT_ACCESS_SECRET`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`,
+`SEED_ADMIN_NAME`, `CORS_ORIGINS`, `NODE_ENV`, `PORT`.
+
+### Default user (seeded at boot)
+
+`UsersBootstrap` upserts a user from the `SEED_ADMIN_*` env on every pod
+start — idempotent, runs in-process so no extra build tooling. Defaults
+are `admin@studio.local / studio-admin`. Don't remove the bootstrap to
+"clean up" unless you've added a /sign-up flow that's safe to expose on
+ephemeral envs. To disable for a specific project, set
+`SEED_ADMIN_EMAIL=` (empty string) in its secret.
+
+### Things the agent must NEVER do in a Studio-provisioned project
+
+- Move, rename, or wrap `back-end/` or `front-end/`.
+- Delete `back-end/Dockerfile`, `front-end/Dockerfile`,
+  `scripts/db-prepare.sh`, or `.github/workflows/deploy.yml`.
+- Hand-edit the `provider` line in `prisma/schema.prisma` — it's the
+  build script's job. Edit the schema, run db-prepare locally instead.
+- Hardcode `http://localhost:3001/api` as the front-end API URL. Defaults
+  to relative `/api` (same-origin via the ingress); local dev sets
+  `NEXT_PUBLIC_API_URL` in `.env.local` per `.env.example`.
+- Change the global `/api` prefix in `back-end/src/main.ts`.
+- Switch the package manager away from npm.
+- Disable `output: 'standalone'` in `next.config.ts`.
+- Move or rename `prisma/migrations-postgres/` — the runtime
+  initContainer expects it there.
+
+### When you genuinely need to break the contract
+
+It's not impossible — the contract is shared with the Studio control
+plane, which lives in a separate repo. If a feature needs a structural
+change here, the same change has to land in `loomi-studio` (the
+worker's image-injection step and the K8s base) *first*, then in this
+template. Don't ship the template-side change first; it'll break every
+new project until the platform catches up.
+
 ## Vibe-coding strategy (end-of-turn verification)
 
 A Claude Code **Stop hook** (configured in `.claude/settings.json`) runs
